@@ -2,7 +2,7 @@
   config(
     materialized = 'incremental',
     incremental_strategy = 'insert_overwrite',
-    partition_by = {'field': 'source_month', 'data_type': 'date', 'granularity': 'month'},
+    partition_by = partition_if_allowed({'field': 'source_month', 'data_type': 'date', 'granularity': 'month'}),
     cluster_by = ['reject_reason'],
     on_schema_change = 'append_new_columns'
   )

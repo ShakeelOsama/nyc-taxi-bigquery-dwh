@@ -2,7 +2,7 @@
   config(
     materialized = 'incremental',
     incremental_strategy = 'insert_overwrite',
-    partition_by = {'field': 'pickup_date', 'data_type': 'date', 'granularity': 'day'},
+    partition_by = partition_if_allowed({'field': 'pickup_date', 'data_type': 'date', 'granularity': 'day'}),
     cluster_by = ['pu_location_id', 'do_location_id'],
     on_schema_change = 'append_new_columns'
   )

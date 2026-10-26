@@ -11,7 +11,7 @@ END         ?= 2024-03
 
 export GCP_PROJECT
 
-.PHONY: setup infra ingest ingest-public build build-sandbox full-refresh test docs
+.PHONY: setup infra ingest ingest-public ingest-sandbox build build-sandbox full-refresh test docs
 
 setup:
 	pip install -r requirements.txt
@@ -27,12 +27,16 @@ ingest:
 ingest-public:
 	python ingestion/load_tlc_month.py --project $(GCP_PROJECT) --from-public-dataset --start $(START) --end $(END)
 
+# BigQuery Sandbox (no billing): unpartitioned raw rebuilt from the public dataset
+ingest-sandbox:
+	python ingestion/load_tlc_month.py --project $(GCP_PROJECT) --from-public-dataset --sandbox --start $(START) --end $(END)
+
 build:
 	cd dbt && dbt seed --target $(TARGET) --profiles-dir . && dbt build --target $(TARGET) --profiles-dir .
 
 # BigQuery Sandbox (no billing/card): no MERGE, so incremental models are rebuilt in full
 build-sandbox:
-	cd dbt && dbt seed --target $(TARGET) --profiles-dir . && dbt build --target $(TARGET) --profiles-dir . --full-refresh
+	cd dbt && dbt seed --target $(TARGET) --profiles-dir . && dbt build --target $(TARGET) --profiles-dir . --full-refresh --vars '{sandbox: true}'
 
 full-refresh:
 	cd dbt && dbt build --target $(TARGET) --profiles-dir . --full-refresh

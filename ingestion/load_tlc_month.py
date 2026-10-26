@@ -165,11 +165,8 @@ def load_month_from_tlc(bq, gcs, project, dataset, bucket, ym, workdir: Path) ->
     return rows
 
 
-def load_month_from_public(bq, project, dataset, ym) -> int:
-    """Fallback: same canonical schema, sourced from bigquery-public-data (2009-2022 available)."""
-    year, month = ym.split("-")
-    target = f"{project}.{dataset}.yellow_trips${year}{month}"
-    sql = f"""
+def public_select_sql(year: str, month: str) -> str:
+    return f"""
     select
       safe_cast(vendor_id as int64)              as vendor_id,
       datetime(pickup_datetime)                  as pickup_datetime,
@@ -197,6 +194,13 @@ def load_month_from_public(bq, project, dataset, ym) -> int:
     from `bigquery-public-data.new_york_taxi_trips.tlc_yellow_trips_{year}`
     where data_file_month = {int(month)}
     """
+
+
+def load_month_from_public(bq, project, dataset, ym) -> int:
+    """Fallback: same canonical schema, sourced from bigquery-public-data (2009-2022 available)."""
+    year, month = ym.split("-")
+    target = f"{project}.{dataset}.yellow_trips${year}{month}"
+    sql = public_select_sql(year, month)
     job = bq.query(sql, job_config=bigquery.QueryJobConfig(
         destination=target,
         write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
@@ -206,6 +210,27 @@ def load_month_from_public(bq, project, dataset, ym) -> int:
         f"select count(*) as n from `{project}.{dataset}.yellow_trips` where source_month = date({year}, {int(month)}, 1)"
     ).result())).n
     log.info("%s: copied from public dataset -> %s (%.2f GB processed)", ym, target, (job.total_bytes_processed or 0) / 1e9)
+    return rows
+
+
+def load_all_from_public_sandbox(bq, project, dataset, months: list[str]) -> int:
+    """BigQuery Sandbox expires every date partition older than 60 days, so historical
+    month partitions vanish as soon as they are written. In sandbox mode raw is rebuilt as
+    one unpartitioned, clustered table with CREATE OR REPLACE (DDL only, no DML)."""
+    target = f"{project}.{dataset}.yellow_trips"
+    bq.delete_table(target, not_found_ok=True)      # partitioning spec cannot change in place
+    union = "\n    union all\n".join(public_select_sql(*ym.split("-")) for ym in months)
+    job = bq.query(f"""
+    create table `{target}`
+    cluster by source_month, pu_location_id
+    options (description = "Yellow taxi trips (sandbox mode: unpartitioned)")
+    as
+    {union}
+    """)
+    job.result()
+    rows = bq.get_table(target).num_rows
+    log.info("Sandbox load: %s rows for %s -> %s (%.2f GB processed)",
+             f"{rows:,}", ", ".join(months), target, (job.total_bytes_processed or 0) / 1e9)
     return rows
 
 
@@ -244,25 +269,33 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--end", help="YYYY-MM (inclusive)")
     p.add_argument("--from-public-dataset", action="store_true")
     p.add_argument("--skip-zones", action="store_true")
+    p.add_argument("--sandbox", action="store_true",
+                   help="BigQuery Sandbox (no billing): unpartitioned raw, needs --from-public-dataset")
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     months = args.months or (month_range(args.start, args.end) if args.start and args.end else None)
     if not months:
         p.error("give --months or --start/--end")
+    if args.sandbox and not args.from_public_dataset:
+        p.error("--sandbox works with --from-public-dataset only")
     if not args.from_public_dataset and not args.bucket:
         p.error("--bucket is required when downloading from TLC")
 
     bq = bigquery.Client(project=args.project, location=args.location)
     gcs = storage.Client(project=args.project) if args.bucket else None
     bq.create_dataset(bigquery.Dataset(f"{args.project}.{args.dataset}"), exists_ok=True)
-    ensure_raw_table(bq, f"{args.project}.{args.dataset}.yellow_trips")
+    if not args.sandbox:
+        ensure_raw_table(bq, f"{args.project}.{args.dataset}.yellow_trips")
 
     total, failed = 0, []
     with tempfile.TemporaryDirectory() as tmp:
         workdir = Path(tmp)
         if not args.skip_zones:
             load_zones(bq, gcs, args.project, args.dataset, args.bucket, workdir)
+        if args.sandbox:
+            total = load_all_from_public_sandbox(bq, args.project, args.dataset, months)
+            months = []
         for ym in months:
             try:
                 if args.from_public_dataset:
@@ -273,7 +306,7 @@ def main(argv: list[str] | None = None) -> int:
                 log.exception("Month %s failed", ym)
                 failed.append(ym)
 
-    log.info("Loaded %s rows across %d month(s); failed: %s", f"{total:,}", len(months) - len(failed), failed or "none")
+    log.info("Loaded %s rows in total; failed months: %s", f"{total:,}", failed or "none")
     return 1 if failed else 0
 
 
