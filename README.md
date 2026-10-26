@@ -1,5 +1,7 @@
 # NYC Taxi Operations Warehouse on BigQuery (large volume)
 
+**Live app (filters + live BigQuery queries):** https://bigquery-warehouse-explorer.streamlit.app
+
 A production-style BigQuery warehouse over the NYC TLC yellow-taxi trip records: roughly
 **3–4 million trips per month, ~40 million per year** loaded, validated and modelled through
 **raw → cleaned → business** layers with dbt, orchestrated monthly by Airflow (Cloud Composer).
