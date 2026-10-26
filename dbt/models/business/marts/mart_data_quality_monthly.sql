@@ -1,4 +1,4 @@
--- Data-quality scorecard per source month: raw rows in, valid rows out, rejects by rule.
+-- Data-quality scorecard per source month: raw row_count in, valid row_count out, rejects by rule.
 -- Powers the DQ page of the dashboard and the volume numbers quoted in the README.
 with raw_counts as (
     select source_month, count(*) as raw_rows
@@ -7,30 +7,30 @@ with raw_counts as (
 ),
 
 valid as (
-    select source_month, count(*) as rows, countif(had_source_duplicates) as dup_flagged
+    select source_month, count(*) as row_count, countif(had_source_duplicates) as dup_flagged
     from {{ ref('stg_yellow_trips') }}
     group by source_month
 ),
 
 rejected as (
-    select source_month, reject_reason, count(*) as rows
+    select source_month, reject_reason, count(*) as row_count
     from {{ ref('stg_yellow_trips__rejected') }}
     group by source_month, reject_reason
 ),
 
 outcomes as (
-    select source_month, 'accepted' as outcome, rows from valid
+    select source_month, 'accepted' as outcome, row_count from valid
     union all
-    select source_month, concat('rejected:', reject_reason), rows from rejected
+    select source_month, concat('rejected:', reject_reason), row_count from rejected
 )
 
 select
     o.source_month,
     o.outcome,
-    o.rows,
+    o.row_count,
     r.raw_rows,
-    safe_divide(o.rows, r.raw_rows)                                 as share_of_raw,
+    safe_divide(o.row_count, r.raw_rows)                                 as share_of_raw,
     -- raw minus (accepted + rejected) = exact duplicates removed
-    r.raw_rows - sum(o.rows) over (partition by o.source_month)     as exact_duplicates_removed
+    r.raw_rows - sum(o.row_count) over (partition by o.source_month)     as exact_duplicates_removed
 from outcomes as o
 join raw_counts as r using (source_month)
