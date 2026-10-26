@@ -1,0 +1,8 @@
+ratecode_id,rate_code,is_flat_or_negotiated
+1,Standard rate,false
+2,JFK flat fare,true
+3,Newark,false
+4,Nassau or Westchester,false
+5,Negotiated fare,true
+6,Group ride,false
+99,Unknown,false

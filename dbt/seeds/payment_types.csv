@@ -1,0 +1,8 @@
+payment_type_code,payment_type,records_tip
+0,Flex fare,false
+1,Credit card,true
+2,Cash,false
+3,No charge,false
+4,Dispute,false
+5,Unknown,false
+6,Voided trip,false

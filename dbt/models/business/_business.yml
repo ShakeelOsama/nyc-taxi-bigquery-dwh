@@ -1,0 +1,74 @@
+version: 2
+
+models:
+  - name: dim_zones
+    columns:
+      - name: location_id
+        tests: [unique, not_null]
+
+  - name: dim_date
+    columns:
+      - name: date_day
+        tests: [unique, not_null]
+
+  - name: fct_trips
+    description: >
+      Trip-grain fact. Partitioned by pickup_date (day) and clustered by pickup zone, drop-off
+      zone and payment type, which are the filters used by nearly every dashboard query.
+    columns:
+      - name: trip_id
+        tests: [not_null]
+      - name: pickup_date
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_date'), field: date_day}
+      - name: time_band
+        tests:
+          - accepted_values: {values: [am_peak, midday, pm_peak, evening, overnight]}
+      - name: tip_pct_of_fare
+        description: Only populated for card trips (cash tips are not recorded by TLC).
+
+  - name: mart_daily_revenue
+    columns:
+      - name: pickup_date
+        tests: [unique, not_null]
+      - name: trips
+        tests:
+          - dbt_utils.expression_is_true: {expression: "> 0"}
+
+  - name: mart_zone_hourly_demand
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [pu_location_id, pickup_day_of_week, pickup_hour]
+
+  - name: mart_airport_trips
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [month, airport_code, airport_direction]
+
+  - name: mart_tipping_behavior
+
+  - name: mart_data_quality_monthly
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [source_month, outcome]
+    columns:
+      - name: exact_duplicates_removed
+        tests:
+          - dbt_utils.expression_is_true: {expression: ">= 0"}
+
+exposures:
+  - name: nyc_taxi_operations_dashboard
+    type: dashboard
+    maturity: high
+    url: https://lookerstudio.google.com/   # replace with your report URL
+    description: Revenue, demand heatmap, airport operations, tipping and data-quality pages.
+    depends_on:
+      - ref('mart_daily_revenue')
+      - ref('mart_zone_hourly_demand')
+      - ref('mart_airport_trips')
+      - ref('mart_tipping_behavior')
+      - ref('mart_data_quality_monthly')
+    owner:
+      name: Data Engineering
+      email: data-eng@example.com

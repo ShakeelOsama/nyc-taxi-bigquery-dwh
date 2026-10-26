@@ -1,0 +1,18 @@
+version: 2
+
+sources:
+  - name: tlc_raw
+    description: NYC TLC yellow taxi data loaded by ingestion/load_tlc_month.py (one month partition per source file).
+    database: "{{ target.project }}"
+    schema: raw
+    tables:
+      - name: yellow_trips
+        loaded_at_field: _ingested_at
+        freshness:
+          warn_after: {count: 40, period: day}     # TLC publishes monthly with ~2 month lag
+          error_after: {count: 75, period: day}
+        columns:
+          - name: source_month
+            tests: [not_null]
+      - name: taxi_zones
+        description: TLC taxi zone lookup (265 zones).

@@ -1,0 +1,52 @@
+version: 2
+
+models:
+  - name: stg_yellow_trips
+    description: >
+      Valid yellow-taxi trips. Incremental insert_overwrite on daily pickup_date partitions;
+      each run reprocesses only the source months (re)loaded since the last run, resolved at
+      compile time so BigQuery prunes partitions. Trips failing a hard rule go to
+      stg_yellow_trips__rejected instead.
+    columns:
+      - name: trip_id
+        description: farm_fingerprint of the trip's source attributes (TLC has no trip id).
+        tests: [unique, not_null]
+      - name: pickup_date
+        tests: [not_null]
+      - name: duration_min
+        tests:
+          - dbt_utils.expression_is_true: {expression: "> 0"}
+      - name: trip_distance
+        tests:
+          - dbt_utils.expression_is_true: {expression: "> 0"}
+      - name: total_amount
+        tests:
+          - dbt_utils.expression_is_true: {expression: ">= 0"}
+      - name: pu_location_id
+        tests:
+          - relationships:
+              to: ref('stg_taxi_zones')
+              field: location_id
+              config: {severity: warn}
+      - name: payment_type_code
+        tests:
+          - relationships:
+              to: ref('payment_types')
+              field: payment_type_code
+              config: {severity: warn}
+
+  - name: stg_yellow_trips__rejected
+    description: Quarantined raw trips with the first validation rule they broke.
+    columns:
+      - name: reject_reason
+        tests:
+          - not_null
+          - accepted_values:
+              values: [missing_timestamp, pickup_outside_file_month, non_positive_duration,
+                       duration_too_long, zero_distance, distance_outlier, impossible_speed,
+                       negative_amount_void_or_refund, amount_outlier, missing_location]
+
+  - name: stg_taxi_zones
+    columns:
+      - name: location_id
+        tests: [unique, not_null]

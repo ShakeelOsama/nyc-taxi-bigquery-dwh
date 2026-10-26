@@ -1,0 +1,42 @@
+name: nyc_taxi_dwh
+version: "1.0.0"
+config-version: 2
+profile: nyc_taxi_dwh
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+analysis-paths: ["analyses"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Data-quality thresholds used by the validation macro (documented in README)
+  max_trip_hours: 6
+  max_trip_miles: 200
+  max_speed_mph: 90
+  max_total_amount: 1000
+
+models:
+  nyc_taxi_dwh:
+    +persist_docs:
+      relation: true
+      columns: true
+    cleaned:
+      +schema: cleaned
+      +labels: {layer: cleaned, domain: mobility}
+    business:
+      +schema: business
+      +labels: {layer: business, domain: mobility}
+      marts:
+        +materialized: table
+
+seeds:
+  nyc_taxi_dwh:
+    +schema: cleaned
+    +labels: {layer: cleaned, kind: reference}
+
+tests:
+  nyc_taxi_dwh:
+    +store_failures: true

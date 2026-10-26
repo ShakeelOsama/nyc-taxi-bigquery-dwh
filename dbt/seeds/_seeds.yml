@@ -1,0 +1,22 @@
+version: 2
+
+seeds:
+  - name: payment_types
+    description: TLC data dictionary payment_type codes. Only card tips are recorded in the data.
+    config:
+      column_types: {payment_type_code: int64, payment_type: string, records_tip: bool}
+    columns:
+      - name: payment_type_code
+        tests: [unique, not_null]
+  - name: rate_codes
+    config:
+      column_types: {ratecode_id: int64, rate_code: string, is_flat_or_negotiated: bool}
+    columns:
+      - name: ratecode_id
+        tests: [unique, not_null]
+  - name: vendors
+    config:
+      column_types: {vendor_id: int64, vendor_name: string}
+    columns:
+      - name: vendor_id
+        tests: [unique, not_null]

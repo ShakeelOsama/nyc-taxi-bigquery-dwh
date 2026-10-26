@@ -1,0 +1,32 @@
+# Copy to profiles.yml in this folder and run dbt with --profiles-dir .
+nyc_taxi_dwh:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCP_PROJECT') }}"
+      dataset: "dev_{{ env_var('USER', 'me') }}"
+      location: US
+      threads: 8
+      job_execution_timeout_seconds: 1800
+      maximum_bytes_billed: 50000000000          # 50 GB per-query guardrail in dev
+
+    ci:
+      type: bigquery
+      method: service-account
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+      project: "{{ env_var('GCP_PROJECT') }}"
+      dataset: "ci_{{ env_var('CI_RUN_ID', 'local') }}"
+      location: US
+      threads: 8
+
+    prod:
+      type: bigquery
+      method: service-account
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+      project: "{{ env_var('GCP_PROJECT') }}"
+      dataset: analytics
+      location: US
+      threads: 16
+      job_execution_timeout_seconds: 3600

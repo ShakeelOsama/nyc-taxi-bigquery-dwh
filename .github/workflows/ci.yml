@@ -1,0 +1,62 @@
+name: dbt CI
+
+on:
+  pull_request:
+    paths: ["dbt/**", "ingestion/**", ".github/workflows/**"]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install sqlfluff==3.* ruff
+      - name: Lint Python
+        run: ruff check ingestion orchestration
+      - name: Lint SQL
+        run: sqlfluff lint dbt/models dbt/tests --config .sqlfluff
+
+  dbt-build:
+    needs: lint
+    runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+      CI_RUN_ID: pr${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install -r requirements.txt
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # Full history is tens of GB, so CI validates SQL + schemas with --empty
+      # (every ref/source is wrapped in LIMIT 0: compiles and creates real BigQuery tables
+      # for pennies), then builds one real month end-to-end with tests.
+      - name: dbt build (schema-only, all models)
+        working-directory: dbt
+        run: |
+          cp profiles.yml.example profiles.yml
+          dbt deps
+          dbt build --target ci --profiles-dir . --empty --full-refresh
+
+      - name: dbt build (one real month, with tests)
+        working-directory: dbt
+        run: |
+          dbt build --target ci --profiles-dir . --full-refresh \
+            --vars '{ci_month: "2024-01-01"}' 
+
+      - name: Drop PR datasets
+        if: always()
+        run: |
+          for ds in cleaned business dbt_test__audit; do
+            bq rm -r -f -d "${GCP_PROJECT}:ci_${CI_RUN_ID}_${ds}" || true
+          done

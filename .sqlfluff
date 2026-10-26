@@ -1,0 +1,15 @@
+[sqlfluff]
+dialect = bigquery
+templater = jinja
+max_line_length = 120
+exclude_rules = LT05, ST06, AM04
+
+[sqlfluff:templater:jinja]
+apply_dbt_builtins = True
+load_macros_from_path = dbt/macros
+
+[sqlfluff:templater:jinja:context]
+target = {"project": "demo", "name": "dev", "schema": "dev"}
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
